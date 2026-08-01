@@ -1,25 +1,36 @@
 #include "touch_calibration.h"
+#include "panel_lvgl_init.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
+#include "esp_lvgl_port.h"
 
 #define TAG "CALIB"
 
-static touch_calibration_t cal;
 static lv_obj_t *cross;
-static lv_obj_t *msg;
+static lv_obj_t *msg = NULL;
+
+static uint8_t l_counter = 1;
 
 extern esp_lcd_touch_handle_t tp;
+touch_calibration_t cal;
+
+int xr1, yr1, xr2, yr2, xr3, yr3, xr4, yr4;
+
 
 static void ui_show_message(const char *text)
 {
+    if (!lvgl_port_lock(0)) return;
+
     if (!msg) {
         msg = lv_label_create(lv_scr_act());
         lv_obj_set_style_text_color(msg, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_font(msg, LV_FONT_MONTSERRAT_16, 0);
     }
     lv_label_set_text(msg, text);
-    lv_obj_align(msg, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_align(msg, LV_ALIGN_CENTER, 0, 200);
+
+    lvgl_port_unlock();
 }
 
 void touch_set_calibration(const touch_calibration_t *src)
@@ -96,118 +107,163 @@ static void compute_cal(
     cal.f = ys1 - cal.d * xr1 - cal.e * yr1;
 
     cal.valid = true;
+
+    ESP_LOGI("CAL", "a=%f b=%f c=%f d=%f e=%f f=%f", cal.a, cal.b, cal.c, cal.d, cal.e, cal.f);
 }
 
-// ---------------------------------------------------------
-// WAIT FOR TOUCH AND RETURN RAW
-// ---------------------------------------------------------
-static void wait_touch(esp_lcd_touch_handle_t tp, int *x, int *y)
-{
-    while (1) {
-        esp_lcd_touch_read_data(tp);
-
-        uint16_t tx, ty, strength;
-        uint8_t point_num = 0;
-
-        bool touched = esp_lcd_touch_get_coordinates(
-            tp,
-            &tx,
-            &ty,
-            &strength,
-            &point_num,
-            1
-        );
-
-        if (touched && point_num > 0) {
-            *x = tx;
-            *y = ty;
-            return;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
 
 // ---------------------------------------------------------
 // DRAW CROSS
 // ---------------------------------------------------------
-static void draw_cross(int x, int y)
+void draw_cross(int cx, int cy)
 {
-    lv_obj_clean(lv_scr_act());
+    if (!lvgl_port_lock(0)) return;
 
-    // Background dim
-    lv_obj_t *bg = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(bg, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(bg, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(bg, LV_OPA_50, 0);
+    // Parent object (screen)
+    lv_obj_t *parent = lv_scr_act();
 
-    // Cross
-    cross = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(cross, 30, 30);
-    lv_obj_set_style_bg_color(cross, lv_color_hex(0xFF0000), 0);
-    lv_obj_set_style_radius(cross, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_pos(cross, x - 15, y - 15);
+    // Thickness of the lines
+    int thickness = 2;
+    int size = 30;
+
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, size, size);
+
+    // Calculate top-left so that center is at (cx, cy)
+    lv_coord_t x = cx - size / 2;
+    lv_coord_t y = cy - size / 2;
+
+    lv_obj_set_pos(btn, x, y);
+
+    lv_obj_add_event_cb(btn, &btn_cal_event, LV_EVENT_CLICKED, NULL);
+
+    // Vertical line
+    lv_obj_t *vline = lv_obj_create(parent);
+    lv_obj_set_size(vline, thickness, size);
+    lv_obj_set_style_bg_color(vline, lv_color_hex(0xFF0000), 0);
+    lv_obj_set_style_bg_opa(vline, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(vline, 0, 0);
+    lv_obj_set_pos(vline, x + size/2 - thickness/2, y);
+
+    // Horizontal line
+    lv_obj_t *hline = lv_obj_create(parent);
+    lv_obj_set_size(hline, size, thickness);
+    lv_obj_set_style_bg_color(hline, lv_color_hex(0xFF0000), 0);
+    lv_obj_set_style_bg_opa(hline, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(hline, 0, 0);
+    lv_obj_set_pos(hline, x, y + size/2 - thickness/2);
+
+    lvgl_port_unlock();
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+
 }
 
 // ---------------------------------------------------------
 // MAIN CALIBRATION UI
 // ---------------------------------------------------------
-void touch_run_calibration(lv_disp_t *disp, esp_lcd_touch_handle_t tp)
+void touch_run_calibration(esp_lcd_touch_handle_t tp)
 {
     int w = lv_disp_get_hor_res(disp);
     int h = lv_disp_get_ver_res(disp);
 
-    int xr1, yr1, xr2, yr2, xr3, yr3, xr4, yr4;
+    ESP_LOGI("DISP", "w=%d h=%d", w, h);
 
     // TOP LEFT
-    ui_show_message("Toque no ponto 1");
-    draw_cross(20, 20);
-    wait_touch(tp,&xr1, &yr1);
-
+    //ui_show_message("Toque no ponto 1");
+    if (l_counter == 1) {
+        draw_cross(15, 15);
+        return;
+    }
+ 
     // TOP RIGHT
-    ui_show_message("Toque no ponto 2");
-    draw_cross(w - 20, 20);
-    wait_touch(tp,&xr2, &yr2);
+    //ui_show_message("Toque no ponto 2");
+    if (l_counter == 2) {
+        draw_cross(w-15, 15);
+        return;
+    }
 
     // BOTTOM RIGHT
-    ui_show_message("Toque no ponto 3");
-    draw_cross(w - 20, h - 20);
-    wait_touch(tp,&xr3, &yr3);
+    //ui_show_message("Toque no ponto 3");
+    if (l_counter == 3) {
+        draw_cross(w - 15, h - 15);
+        return;
+    }
 
     // BOTTOM LEFT
-    ui_show_message("Toque no ponto 4");
-    draw_cross(20, h - 20);
-    wait_touch(tp, &xr4, &yr4);
+    //ui_show_message("Toque no ponto 4");
+    if (l_counter == 4) {
+        draw_cross(15, h - 15);
+        return;
+    }
 
-    compute_cal(
-        xr1, yr1, 0, 0,
-        xr2, yr2, w, 0,
-        xr3, yr3, w, h,
-        xr4, yr4, 0, h
-    );
+    if (l_counter == 5) {
+        compute_cal(
+            xr1, yr1, 0, 0,
+            xr2, yr2, w, 0,
+            xr3, yr3, w, h,
+            xr4, yr4, 0, h
+        );
 
-    touch_save_calibration(&cal);
+        //touch_save_calibration(&cal);
 
-    lv_obj_clean(lv_scr_act());
-    ui_show_message("Calibração concluída!");
-    vTaskDelay(pdMS_TO_TICKS(1000));
+        //lv_obj_clean(lv_scr_act());
+        //ui_show_message("Calibração concluída!");*/
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 
+void btn_cal_event(lv_event_t *e) {
+    
+    ESP_LOGI("CAL_BTN_EVENT", "CLICKED");
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI("CAL_BTN", "pressed");
+        lv_indev_t * indev = lv_event_get_indev(e);
+        if (indev) {
+            lv_point_t point;
+            lv_indev_get_point(indev, &point); // Get coordinates
+            ESP_LOGI("CAL_TOUCH", "x=%d y=%d counter=%d", point.x, point.y, l_counter);
+            if (l_counter==1) {
+                xr1 = point.x; 
+                yr1 = point.y;
+            }
+            if (l_counter==2) {
+                xr2 = point.x; 
+                yr2 = point.y;
+            }
+            if (l_counter==3) {
+                xr3 = point.x; 
+                yr3 = point.y;
+            }
+            if (l_counter==4) {
+                xr4 = point.x; 
+                yr4 = point.y;
+            }
+            l_counter++;
+            touch_run_calibration(tp);
 
+        } else {
+            ESP_LOGI("CAL_BTN","No input device associated with this event.");
+        }
+    }
+}
 
 void btn_event(lv_event_t *e) {
-    lv_disp_t *d = lv_event_get_user_data(e);
-    touch_run_calibration(d,tp);
+    touch_run_calibration(tp);
 }
 
 void ui_create_settings_menu(lv_disp_t *disp)
 {
+    if (!lvgl_port_lock(0)) return;
+
     lv_obj_t *btn = lv_btn_create(lv_scr_act());
-    lv_obj_set_size(btn, 180, 60);
-    lv_obj_align(btn, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_size(btn, 180, 50);
+    lv_obj_align(btn, LV_ALIGN_CENTER, 0, -150);
 
     lv_obj_t *label = lv_label_create(btn);
     lv_label_set_text(label, "Recalibrar Touch");
 
-    lv_obj_add_event_cb(btn, &btn_event, LV_EVENT_CLICKED, disp);
+    lv_obj_add_event_cb(btn, &btn_event, LV_EVENT_CLICKED, NULL);
+
+    lvgl_port_unlock();
 }

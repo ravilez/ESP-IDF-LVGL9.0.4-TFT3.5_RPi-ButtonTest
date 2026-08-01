@@ -11,6 +11,8 @@
 extern "C" {
 #endif
 
+extern lv_disp_t *disp;
+
 void initialize_touch_driver();
 void initialize_input();
 

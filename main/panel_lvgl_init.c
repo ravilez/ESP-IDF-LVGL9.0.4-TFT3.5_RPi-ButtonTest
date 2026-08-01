@@ -38,6 +38,7 @@ static const char *TAG = "ili9486_display";
 #define LCD_V_RES          CONFIG_ILI9486_V_RES/* ------------------------- */
 
 // ─── ili9486_display.c ──────────────────────────────────────────────────────
+lv_disp_t *disp;
 
 static esp_lcd_panel_io_handle_t s_io_handle = NULL;
 static esp_lcd_panel_handle_t   s_panel      = NULL;

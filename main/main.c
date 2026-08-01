@@ -18,6 +18,7 @@ static const char* TAG = "main";
 // ── Pixel buffer — one row at a time to avoid large stack allocs ──────────────
 
 extern esp_lcd_touch_handle_t tp;
+extern touch_calibration_t cal;
 
 static void log_diagnostics(void)
 {
@@ -47,15 +48,15 @@ void app_main(void)
 
     initialize_input();
 
-/*    touch_calibration_t tmp;
+    /*touch_calibration_t tmp;
     if (!touch_load_calibration(&tmp)) {
         touch_run_calibration(handle,tp);
     } else {
         touch_set_calibration(&tmp);
-    }
-*/
+    }*/
+
     demo_test_styled_buttons();
-    //ui_create_settings_menu(handle);
+    ui_create_settings_menu(disp);
 
     while (1) {
         
