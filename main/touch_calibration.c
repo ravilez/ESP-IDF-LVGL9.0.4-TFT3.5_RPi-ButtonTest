@@ -22,13 +22,16 @@ static void ui_show_message(const char *text)
 {
     if (!lvgl_port_lock(0)) return;
 
+    // Parent object (screen)
+    lv_obj_t *parent = lv_scr_act();
+
     if (!msg) {
-        msg = lv_label_create(lv_scr_act());
+        msg = lv_label_create(parent);
         lv_obj_set_style_text_color(msg, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_text_font(msg, LV_FONT_MONTSERRAT_16, 0);
+        lv_obj_set_style_text_font(msg, &lv_font_montserrat_16, 0);
     }
     lv_label_set_text(msg, text);
-    lv_obj_align(msg, LV_ALIGN_CENTER, 0, 200);
+    lv_obj_align(msg, LV_ALIGN_CENTER, 0, -200);
 
     lvgl_port_unlock();
 }
@@ -170,28 +173,28 @@ void touch_run_calibration(esp_lcd_touch_handle_t tp)
     ESP_LOGI("DISP", "w=%d h=%d", w, h);
 
     // TOP LEFT
-    //ui_show_message("Toque no ponto 1");
+    ui_show_message("Toque no ponto 1");
     if (l_counter == 1) {
         draw_cross(15, 15);
         return;
     }
  
     // TOP RIGHT
-    //ui_show_message("Toque no ponto 2");
+    ui_show_message("Toque no ponto 2");
     if (l_counter == 2) {
         draw_cross(w-15, 15);
         return;
     }
 
     // BOTTOM RIGHT
-    //ui_show_message("Toque no ponto 3");
+    ui_show_message("Toque no ponto 3");
     if (l_counter == 3) {
         draw_cross(w - 15, h - 15);
         return;
     }
 
     // BOTTOM LEFT
-    //ui_show_message("Toque no ponto 4");
+    ui_show_message("Toque no ponto 4");
     if (l_counter == 4) {
         draw_cross(15, h - 15);
         return;
@@ -204,6 +207,7 @@ void touch_run_calibration(esp_lcd_touch_handle_t tp)
             xr3, yr3, w, h,
             xr4, yr4, 0, h
         );
+        l_counter = 1;
 
         //touch_save_calibration(&cal);
 
@@ -240,6 +244,10 @@ void btn_cal_event(lv_event_t *e) {
                 yr4 = point.y;
             }
             l_counter++;
+            lv_obj_t *widget = lv_event_get_target_obj(e);
+            lv_obj_delete(widget);
+            lv_display_refr_timer(NULL);
+
             touch_run_calibration(tp);
 
         } else {
@@ -256,12 +264,17 @@ void ui_create_settings_menu(lv_disp_t *disp)
 {
     if (!lvgl_port_lock(0)) return;
 
-    lv_obj_t *btn = lv_btn_create(lv_scr_act());
+    lv_obj_t *parent = lv_scr_act();
+
+    lv_obj_t *btn = lv_btn_create(parent);
     lv_obj_set_size(btn, 180, 50);
     lv_obj_align(btn, LV_ALIGN_CENTER, 0, -150);
 
-    lv_obj_t *label = lv_label_create(btn);
-    lv_label_set_text(label, "Recalibrar Touch");
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, "Recalibrate Touch");
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF) , 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
+    lv_obj_center(lbl);
 
     lv_obj_add_event_cb(btn, &btn_event, LV_EVENT_CLICKED, NULL);
 

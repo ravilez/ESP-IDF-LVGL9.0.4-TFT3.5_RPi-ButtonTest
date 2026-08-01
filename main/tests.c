@@ -60,7 +60,7 @@ void demo_test_primary_flashes(void)
         bool is_white = (i == 3);
         lv_obj_t *lbl = add_label(scr, kPrimaries[i].name,
                                    is_white ? lv_color_black() : lv_color_white(),
-                                   &lv_font_montserrat_14);
+                                   &lv_font_montserrat_16);
         lv_obj_center(lbl);
 
         lvgl_port_unlock();
@@ -102,7 +102,7 @@ void demo_test_rainbow_stripes(void)
         lv_obj_set_style_pad_all(band, 0, 0);
 
         lv_obj_t *lbl = add_label(band, kRainbow[i].name,
-                                   lv_color_white(), &lv_font_montserrat_14);
+                                   lv_color_white(), &lv_font_montserrat_16);
         lv_obj_center(lbl);
     }
 
@@ -135,7 +135,7 @@ void demo_test_corner_labels(void)
 
     for (int i = 0; i < 5; i++) {
         lv_obj_t *lbl = add_label(scr, kCorners[i].txt,
-                                   kCorners[i].col, &lv_font_montserrat_14);
+                                   kCorners[i].col, &lv_font_montserrat_16);
         lv_obj_align(lbl, kCorners[i].align, 5, 0);
     }
 
@@ -164,7 +164,7 @@ static lv_obj_t *create_coloured_button(lv_obj_t *parent,
     lv_obj_set_style_border_color(btn, border, 0);
     lv_obj_set_style_border_width(btn, 2, 0);
 
-    lv_obj_t *lbl = add_label(btn, label_text, text_col, &lv_font_montserrat_14);
+    lv_obj_t *lbl = add_label(btn, label_text, text_col, &lv_font_montserrat_16);
     lv_obj_center(lbl);
 
     return btn;
@@ -243,7 +243,7 @@ void demo_test_colour_bar(void)
     scr = get_clean_screen(lv_color_make(15, 15, 15));
 
     lv_obj_t *title = add_label(scr, "Colour Progress Bar",
-                                 lv_color_white(), &lv_font_montserrat_14);
+                                 lv_color_white(), &lv_font_montserrat_16);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
 
     bar = lv_bar_create(scr);
@@ -254,7 +254,7 @@ void demo_test_colour_bar(void)
     lv_obj_set_style_bg_color(bar, lv_color_make(50, 50, 50), 0);
 
     // Create label once — each pass updates it in-place
-    pass_lbl = add_label(scr, "", lv_color_white(), &lv_font_montserrat_14);
+    pass_lbl = add_label(scr, "", lv_color_white(), &lv_font_montserrat_16);
     lv_obj_align(pass_lbl, LV_ALIGN_CENTER, 0, 50);
 
     lvgl_port_unlock();
