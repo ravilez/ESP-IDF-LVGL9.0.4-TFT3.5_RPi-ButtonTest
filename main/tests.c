@@ -202,7 +202,6 @@ void demo_test_styled_buttons(void)
     lv_obj_add_event_cb(btn2, btn_event_handler, LV_EVENT_PRESSED, NULL);
 
     lvgl_port_unlock();
-    delay_ms(2500);
 }
 
 // ─── Test 5: Colour-cycling animated progress bar ─────────────────────────────

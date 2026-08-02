@@ -20,6 +20,11 @@ static const char* TAG = "main";
 extern esp_lcd_touch_handle_t tp;
 extern touch_calibration_t cal;
 
+static void delay_ms(uint32_t ms)
+{
+    vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
 static void log_diagnostics(void)
 {
     ESP_LOGI(TAG, "──────────────────────────────────────────");
@@ -30,6 +35,38 @@ static void log_diagnostics(void)
     ESP_LOGI(TAG, "  Bar never changes colour          -> style refresh issue");
     ESP_LOGI(TAG, "  Text only in one strip            -> RASET not fixed");
     ESP_LOGI(TAG, "──────────────────────────────────────────");
+}
+
+static void msgbox_event_cb(lv_event_t * e)
+{
+    lv_obj_t * msgbox = lv_event_get_user_data(e);
+    
+    if (msgbox)
+        lv_msgbox_close_async(msgbox);
+}
+
+static void msgbox_create(void)
+{
+    if (!lvgl_port_lock(0)) return;
+
+    lv_obj_t * mbox = lv_msgbox_create(NULL);
+    lv_msgbox_add_title(mbox, "uSPX");
+    lv_msgbox_add_text(mbox, "Welcome");
+
+    lv_obj_set_style_bg_color(lv_msgbox_get_header(mbox), lv_color_black(), 0);
+    
+
+    lv_obj_t * btn = lv_msgbox_add_footer_button(mbox, "Ok");
+    lv_obj_add_event_cb(btn, msgbox_event_cb, LV_EVENT_CLICKED, mbox);
+    lv_obj_add_state(btn, LV_STATE_FOCUS_KEY);
+
+    lv_obj_align(mbox, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t * bg = lv_obj_get_parent(mbox);
+    lv_obj_set_style_bg_opa(bg, LV_OPA_50, 0);
+    lv_obj_set_style_bg_color(bg, lv_color_hex(0xaabb80), 0);
+
+    lvgl_port_unlock();
 }
 
 void app_main(void)
@@ -57,6 +94,8 @@ void app_main(void)
 
     demo_test_styled_buttons();
     ui_create_settings_menu(disp);
+
+    msgbox_create();
 
     while (1) {
         
