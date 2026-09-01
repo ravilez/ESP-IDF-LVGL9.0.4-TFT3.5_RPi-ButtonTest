@@ -7,12 +7,13 @@
 #include "freertos/task.h"
 #include "esp_task_wdt.h"
 #include "esp_log.h"
+#include "esp_spiffs.h"
 #include "panel_lvgl_init.h"   // your existing display init header
 #include "touch_calibration.h"   
+#include "create_tabview_with_icons_and_buttons.h"
 #include "tests.h"   // your existing display init header
 #include "esp_lvgl_port.h"
 #include "lvgl.h"  // LVGL main header
-
 
 static const char* TAG = "main";
 // ── Pixel buffer — one row at a time to avoid large stack allocs ──────────────
@@ -92,10 +93,36 @@ void app_main(void)
         touch_set_calibration(&tmp);
     }*/
 
-    demo_test_styled_buttons();
-    ui_create_settings_menu(disp);
+    /* 3. Initilialize SPIFFS */
+    ESP_LOGI(TAG, "Initializing SPIFFS");
 
-    msgbox_create();
+    esp_vfs_spiffs_conf_t conf = {
+      .base_path = "/spiffs",
+      .partition_label = NULL,
+      .max_files = 5,
+      .format_if_mount_failed = true
+    };
+
+    // Use settings defined above to initialize and mount SPIFFS filesystem.
+    // Note: esp_vfs_spiffs_register is an all-in-one convenience function.
+    ret = esp_vfs_spiffs_register(&conf);
+
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Failed to mount or format filesystem");
+        } else if (ret == ESP_ERR_NOT_FOUND) {
+            ESP_LOGE(TAG, "Failed to find SPIFFS partition");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
+        }
+        return;
+    }
+
+    //demo_test_styled_buttons();
+    //ui_create_settings_menu(disp);
+    read_irrigation_config();
+
+    //msgbox_create();
 
     while (1) {
         
@@ -111,4 +138,7 @@ void app_main(void)
         lv_timer_handler();
         vTaskDelay(pdMS_TO_TICKS(5));
     }
+
+    esp_vfs_spiffs_unregister(conf.partition_label);
+
 }

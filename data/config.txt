@@ -1,0 +1,116 @@
+{
+  "system": {
+    "name": "Main Irrigation Controller",
+    "timezone": "Europe/Lisbon",
+    "devices": {
+      "valves": [
+        {
+          "id": "valve_1",
+          "location": "Garden Zone 1",
+          "state": "off",
+          "flow_rate_lpm": 0,
+          "schedule": [
+            {
+              "days": ["Mon", "Wed", "Fri"],
+              "start_time": "06:00",
+              "end_time": "06:20"
+            },
+            {
+              "days": ["Sun"],
+              "start_time": "07:00",
+              "end_time": "07:15"
+            }
+          ]
+        },
+        {
+          "id": "valve_2",
+          "location": "Garden Zone 2",
+          "state": "on",
+          "flow_rate_lpm": 12,
+          "schedule": [
+            {
+              "days": ["Tue", "Thu", "Sat"],
+              "start_time": "06:30",
+              "end_time": "06:50"
+            }
+          ]
+        },
+        {
+          "id": "valve_3",
+          "location": "Garden Zone 5",
+          "state": "off",
+          "flow_rate_lpm": 0,
+          "schedule": [
+            {
+              "days": ["Mon", "Wed", "Fri"],
+              "start_time": "06:00",
+              "end_time": "06:20"
+            },
+            {
+              "days": ["Sun"],
+              "start_time": "07:00",
+              "end_time": "07:15"
+            }
+          ]
+        }
+      ],
+
+      "meters": [
+        {
+          "id": "fm_1",
+          "location": "Main Line Flow Meter",
+          "current_flow_lpm": 18.5,
+          "total_liters_today": 120,
+          "schedule": [
+            {
+              "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+              "start_time": "00:00",
+              "end_time": "23:59"
+            }
+          ]
+        },
+        {
+          "id": "fm_2",
+          "location": "Secondary Line Flow Meter",
+          "current_flow_lpm": 0,
+          "total_liters_today": 0,
+          "schedule": []
+        }
+      ],
+
+      "pumps": [
+        {
+          "id": "pump_1",
+          "location": "Well Pump",
+          "state": "off",
+          "pressure_bar": 0.0,
+          "schedule": [
+            {
+              "days": ["Mon", "Wed", "Fri"],
+              "start_time": "05:55",
+              "end_time": "06:25"
+            }
+          ]
+        },
+        {
+          "id": "pump_2",
+          "location": "Reservoir Pump",
+          "state": "on",
+          "pressure_bar": 2.1,
+          "schedule": [
+            {
+              "days": ["Tue", "Thu"],
+              "start_time": "06:20",
+              "end_time": "06:50"
+            },
+            {
+              "days": ["Sun"],
+              "start_time": "08:00",
+              "end_time": "08:30"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
