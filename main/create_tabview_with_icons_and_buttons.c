@@ -24,10 +24,17 @@ typedef enum {
 } device_state_t;
 
 typedef struct {
+    char *state_info; 
+    const char *extra_info;
+    char *schedule_info;
+} device_info_t;
+
+typedef struct {
     device_state_t state;
     char *location;
     device_type_t type;
     lv_obj_t *card; // Pointer to the card object for this device
+    device_info_t *device_info;
 } device_ctx_t;
 
 typedef struct {
@@ -38,6 +45,7 @@ typedef struct {
     lv_obj_t *modal;          // modal background
     lv_obj_t *win;            // dialog window
 } dialog_ctx_t;
+
 
 dialog_ctx_t *dctx = NULL;
 
@@ -80,24 +88,15 @@ static lv_color_t get_state_color(device_state_t state)
     }
 }
 
-/* Callback to cycle through states */
 static void btn_state_event_cb(lv_event_t *e)
 {
     device_ctx_t *ctx = lv_event_get_user_data(e);
     lv_obj_t *btn = lv_event_get_target(e);
 
     open_edit_dialog(lv_layer_top(), ctx);
-
-    /* Cycle state */
-    /*ctx->state = (ctx->state + 1) % 4;*/
-
-    /* Update button label */
-    /*lv_obj_t *btn_label = lv_obj_get_child(btn, 0);
-    lv_label_set_text(btn_label, get_state_text(ctx->state));*/
-
 }
 
-static lv_obj_t *create_device_card(lv_obj_t *parent, const char *title, const char *info, device_ctx_t *ctx)
+static lv_obj_t *create_device_card(lv_obj_t *parent, const char *title, device_ctx_t *ctx)
 {
     if (!lvgl_port_lock(0)) return NULL;
 
@@ -120,7 +119,24 @@ static lv_obj_t *create_device_card(lv_obj_t *parent, const char *title, const c
     lv_obj_align(label_title, LV_ALIGN_TOP_LEFT, 0, 0);
 
     lv_obj_t *label_info = lv_label_create(card);
-    lv_label_set_text(label_info, info);
+
+    size_t len = strlen(ctx->device_info->state_info) +
+             strlen(ctx->device_info->extra_info) +
+             strlen(ctx->device_info->schedule_info) + 1;   // +1 for '\0'
+
+    char *result = malloc(len);
+    if(result == NULL) {
+        // handle allocation failure
+    }
+
+    result[0] = '\0';                
+    strcat(result, ctx->device_info->state_info);
+    strcat(result, ctx->device_info->extra_info);
+    strcat(result, ctx->device_info->schedule_info);
+
+    lv_label_set_text(label_info, result);
+    free(result);
+
     lv_obj_set_style_text_color(label_info, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(label_info, &lv_font_montserrat_18, 0);
     lv_obj_align(label_info, LV_ALIGN_CENTER, 0, 0);
@@ -162,29 +178,46 @@ static void load_devices_into_tab(lv_obj_t *tab, cJSON *array, const char *type)
         char info[512];
         snprintf(info, sizeof(info), "\nState: %s\n", s_state);
 
+        device_info_t *device_info = malloc(sizeof(device_info_t));
+        device_info->state_info = malloc(strlen(info) + 1);
+        strcpy((char *)device_info->state_info, info);
+
+        memset(info, 0, sizeof(info));
         // Extra fields depending on type
         if (strcmp(type, "valves") == 0) {
             double flow = cJSON_GetObjectItem(dev, "flow_rate_lpm")->valuedouble;
-            snprintf(info + strlen(info), sizeof(info) - strlen(info),
-                     "Flow: %.1f L/min\n", flow);
+            snprintf(info, sizeof(info),"Flow: %.1f L/min\n", flow);
+
         }
         else if (strcmp(type, "meters") == 0) {
             double flow = cJSON_GetObjectItem(dev, "current_flow_lpm")->valuedouble;
             int total = cJSON_GetObjectItem(dev, "total_liters_today")->valueint;
-            snprintf(info + strlen(info), sizeof(info) - strlen(info),
+            snprintf(info, sizeof(info),
                      "Flow: %.1f L/min\nTotal today: %d L\n", flow, total);
         }
         else if (strcmp(type, "pumps") == 0) {
             double pressure = cJSON_GetObjectItem(dev, "pressure_bar")->valuedouble;
-            snprintf(info + strlen(info), sizeof(info) - strlen(info),
+            snprintf(info, sizeof(info) ,
                      "Pressure: %.1f bar\n", pressure);
         }
 
+        if (strcmp(type, "tanks") == 0) {
+            double level = cJSON_GetObjectItem(dev, "level_percent")->valuedouble;
+            snprintf(info, sizeof(info) ,
+                     "Level: %.1f%%\n", level);
+        }
+
+        if (info[0] != '\0') {         
+            device_info->extra_info = malloc(strlen(info) + 1);
+            strcpy((char *)device_info->extra_info, info);
+        }
+
         // Schedules
+        memset(info, 0, sizeof(info));
         cJSON *schedule = cJSON_GetObjectItem(dev, "schedule");
         int sched_count = cJSON_GetArraySize(schedule);
 
-        snprintf(info + strlen(info), sizeof(info) - strlen(info), "Schedules:\n");
+        snprintf(info, sizeof(info), "Schedules:\n");
 
         for (int s = 0; s < sched_count; s++) {
             cJSON *sch = cJSON_GetArrayItem(schedule, s);
@@ -193,6 +226,10 @@ static void load_devices_into_tab(lv_obj_t *tab, cJSON *array, const char *type)
 
             snprintf(info + strlen(info), sizeof(info) - strlen(info),
                      "  %s-%s\n", start, end);
+        }
+        if (sched_count > 0) {
+            device_info->schedule_info = malloc(strlen(info) + 1);
+            strcpy((char *)device_info->schedule_info, info);
         }
 
         /* Allocate context */
@@ -210,7 +247,9 @@ static void load_devices_into_tab(lv_obj_t *tab, cJSON *array, const char *type)
         ctx->location = malloc(strlen(s_location) + 1);
         strcpy(ctx->location, s_location);
 
-        create_device_card(cont, s_location, info, ctx);
+        ctx->device_info = device_info;
+
+        create_device_card(cont, s_location, ctx);
     }
 }
 
@@ -455,19 +494,40 @@ void rewrite_card_info(device_ctx_t *ctx)
 
     switch(ctx->state) {
         case STATE_ACTIVE:
-            snprintf(info, sizeof(info), "\nState: Active\n");
+            snprintf(info, sizeof(info), "\nState: on\n");
             break;
         case STATE_INACTIVE:
-            snprintf(info, sizeof(info), "\nState: Inactive\n");
+            snprintf(info, sizeof(info), "\nState: off\n");
             break;
         case STATE_ERROR:
-            snprintf(info, sizeof(info), "\nState: Error\n");
+            snprintf(info, sizeof(info), "\nState: error\n");
             break;
         default:
-            snprintf(info, sizeof(info), "\nState: Unknown\n");
+            snprintf(info, sizeof(info), "\nState: n/a\n");
             break;
     }
+ 
+    free(ctx->device_info->state_info);
+    
+    ctx->device_info->state_info = malloc(strlen(info) + 1);
+    strcpy((char *)ctx->device_info->state_info, info);
+
+    size_t len = strlen(ctx->device_info->state_info) +
+             strlen(ctx->device_info->extra_info) +
+             strlen(ctx->device_info->schedule_info) + 1;   // +1 for '\0'
+
+    char *result = malloc(len);
+    if(result == NULL) {
+        // handle allocation failure
+    }
+
+    result[0] = '\0';                
+    strcat(result, ctx->device_info->state_info);
+    strcat(result, ctx->device_info->extra_info);
+    strcat(result, ctx->device_info->schedule_info);
 
     lv_obj_t *label_info = lv_obj_get_child(ctx->card, 1); // Assuming the info label is the second child
-    lv_label_set_text(label_info, info);
+    lv_label_set_text(label_info, result);
+
+    free(result);
 }
