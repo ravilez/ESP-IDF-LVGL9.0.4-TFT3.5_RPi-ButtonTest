@@ -10,7 +10,7 @@
 #include "esp_spiffs.h"
 #include "panel_lvgl_init.h"   // your existing display init header
 #include "touch_calibration.h"   
-#include "create_tabview_with_icons_and_buttons.h"
+#include "ui_create_tabs.h"
 #include "tests.h"   // your existing display init header
 #include "esp_lvgl_port.h"
 #include "lvgl.h"  // LVGL main header
@@ -24,18 +24,6 @@ extern touch_calibration_t cal;
 static void delay_ms(uint32_t ms)
 {
     vTaskDelay(pdMS_TO_TICKS(ms));
-}
-
-static void log_diagnostics(void)
-{
-    ESP_LOGI(TAG, "──────────────────────────────────────────");
-    ESP_LOGI(TAG, "Colour demo complete — diagnostic hints:");
-    ESP_LOGI(TAG, "  All primaries correct             -> driver OK");
-    ESP_LOGI(TAG, "  Red/Blue swapped on solid screens -> byte-swap issue");
-    ESP_LOGI(TAG, "  Stripe colours wrong hue          -> RGB order wrong");
-    ESP_LOGI(TAG, "  Bar never changes colour          -> style refresh issue");
-    ESP_LOGI(TAG, "  Text only in one strip            -> RASET not fixed");
-    ESP_LOGI(TAG, "──────────────────────────────────────────");
 }
 
 static void msgbox_event_cb(lv_event_t * e)
@@ -86,13 +74,6 @@ void app_main(void)
 
     initialize_input();
 
-    /*touch_calibration_t tmp;
-    if (!touch_load_calibration(&tmp)) {
-        touch_run_calibration(handle,tp);
-    } else {
-        touch_set_calibration(&tmp);
-    }*/
-
     /* 3. Initilialize SPIFFS */
     ESP_LOGI(TAG, "Initializing SPIFFS");
 
@@ -118,26 +99,14 @@ void app_main(void)
         return;
     }
 
-    //demo_test_styled_buttons();
     read_irrigation_config();
 
     msgbox_create();
 
     while (1) {
-        
-        /*demo_test_primary_flashes();
-        demo_test_rainbow_stripes();
-        demo_test_corner_labels();
-        demo_test_styled_buttons();
-        demo_test_colour_bar();
-
-        log_diagnostics();
-        vTaskDelay(1000 / portTICK_PERIOD_MS);*/
-
         lv_timer_handler();
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     esp_vfs_spiffs_unregister(conf.partition_label);
-
 }

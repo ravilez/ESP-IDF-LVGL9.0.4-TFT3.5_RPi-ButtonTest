@@ -1,4 +1,4 @@
-idf_component_register(SRCS "create_tabview_with_icons_and_buttons.c" "main.c" "panel_lvgl_init.c" "tests.c" "touch_calibration.c"
+idf_component_register(SRCS "ui_create_tabs.c" "main.c" "panel_lvgl_init.c" "tests.c" "touch_calibration.c"
                     INCLUDE_DIRS "."
                     PRIV_REQUIRES cjson esp-lcd-ili9486 lvgl esp_lvgl_port nvs_flash spiffs
                     REQUIRES esp_lcd driver)
