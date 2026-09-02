@@ -61,6 +61,7 @@ char *load_json_file(const char *path);
 static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data);
 static void dialog_ok_event(lv_event_t * e);
 static void dialog_cancel_event(lv_event_t * e);
+static void kb_event_cb(lv_event_t * e);
 void rewrite_card_info(device_ctx_t *ctx);
 
 
@@ -381,6 +382,7 @@ static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data)
     lv_keyboard_set_textarea(kb, edit);
 
     lv_obj_add_event_cb(edit, ta_event_cb, LV_EVENT_ALL, kb);
+    lv_obj_add_event_cb(kb, kb_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
 
     
@@ -470,11 +472,35 @@ static void dialog_cancel_event(lv_event_t * e)
     dctx = NULL;
 }
 
+static void kb_event_cb(lv_event_t * e)
+{
+    lv_obj_t * kb = lv_event_get_target(e);
+
+    if(lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+
+        // Get the ID of the last activated button
+        uint16_t btn_id = lv_keyboard_get_selected_btn(kb);
+        const char * txt = lv_keyboard_get_btn_text(kb,btn_id);
+
+        fprintf(stdout, "Keyboard button pressed: %d, %s\n", btn_id, txt);
+
+
+        if(btn_id == 39) { // Assuming 39 is the ID for the "Enter" button
+            // Close keyboard
+            lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+
+            // Optionally unfocus textarea
+            lv_obj_t * ta = lv_keyboard_get_textarea(kb);
+            if(ta) lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+        }
+    }
+}
+
 static void ta_event_cb(lv_event_t * e)
 {
     lv_obj_t * ta = lv_event_get_target(e);
     lv_obj_t * kb = lv_event_get_user_data(e);
-
+    
     if(lv_event_get_code(e) == LV_EVENT_FOCUSED) {
         lv_obj_clear_flag(kb, LV_OBJ_FLAG_HIDDEN);
         lv_keyboard_set_textarea(kb, ta);
