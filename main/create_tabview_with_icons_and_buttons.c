@@ -27,12 +27,33 @@ typedef struct {
     device_state_t state;
     char *location;
     device_type_t type;
+    lv_obj_t *card; // Pointer to the card object for this device
 } device_ctx_t;
+
+typedef struct {
+    device_ctx_t *device;     // your existing device context
+    lv_obj_t *edit;        // textarea pointer
+    lv_obj_t *dd_state;       // dropdown pointer
+    lv_obj_t *kb;             // keyboard pointer
+    lv_obj_t *modal;          // modal background
+    lv_obj_t *win;            // dialog window
+} dialog_ctx_t;
+
+dialog_ctx_t *dctx = NULL;
+
+cJSON *g_json_system = NULL;
+cJSON *g_json_devices = NULL;
+cJSON *g_json_valves = NULL;
+cJSON *g_json_meters = NULL;
+cJSON *g_json_pumps = NULL;
+cJSON *g_json_tanks = NULL;
+cJSON *g_json_sensors = NULL;
 
 char *load_json_file(const char *path);
 static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data);
 static void dialog_ok_event(lv_event_t * e);
 static void dialog_cancel_event(lv_event_t * e);
+void rewrite_card_info(device_ctx_t *ctx);
 
 
 /* Forward declaration */
@@ -88,6 +109,9 @@ static lv_obj_t *create_device_card(lv_obj_t *parent, const char *title, const c
     lv_obj_set_style_bg_color(card, lv_color_hex(0x222222), 0);
     lv_obj_set_style_border_width(card, 2, 0);
     lv_obj_set_style_border_color(card, lv_color_hex(0xFF4444), 0);
+
+    //bind the card to the context so we can access it later
+    ctx->card = card;
 
     lv_obj_t *label_title = lv_label_create(card);
     lv_label_set_text(label_title, title);
@@ -206,14 +230,14 @@ int read_irrigation_config()
         return -2;
     }
 
-    cJSON *system = cJSON_GetObjectItem(root, "system");
-    cJSON *devices = cJSON_GetObjectItem(system, "devices");
+    g_json_system = cJSON_GetObjectItem(root, "system");
+    g_json_devices = cJSON_GetObjectItem(g_json_system, "devices");
 
-    cJSON *valves = cJSON_GetObjectItem(devices, "valves");
-    cJSON *meters = cJSON_GetObjectItem(devices, "meters");
-    cJSON *pumps = cJSON_GetObjectItem(devices, "pumps");
-    cJSON *tanks = cJSON_GetObjectItem(devices, "tanks");
-    cJSON *sensors = cJSON_GetObjectItem(devices, "sensors");
+    g_json_valves = cJSON_GetObjectItem(g_json_devices, "valves");
+    g_json_meters = cJSON_GetObjectItem(g_json_devices, "meters");
+    g_json_pumps = cJSON_GetObjectItem(g_json_devices, "pumps");
+    g_json_tanks = cJSON_GetObjectItem(g_json_devices, "tanks");
+    g_json_sensors = cJSON_GetObjectItem(g_json_devices, "sensors");
 
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_t *tabview = lv_tabview_create(scr);
@@ -225,11 +249,11 @@ int read_irrigation_config()
     lv_obj_t *tab_flow    = lv_tabview_add_tab(tabview, "Meters");
     lv_obj_t *tab_tanks   = lv_tabview_add_tab(tabview, "Tanks");
 
-    load_devices_into_tab(tab_valves, valves, "valves");
-    load_devices_into_tab(tab_flow, meters, "meters");
-    load_devices_into_tab(tab_pumps, pumps, "pumps");
-    load_devices_into_tab(tab_tanks, tanks, "tanks");
-    load_devices_into_tab(tab_sensors, sensors, "sensors");
+    load_devices_into_tab(tab_valves, g_json_valves, "valves");
+    load_devices_into_tab(tab_flow, g_json_meters, "meters");
+    load_devices_into_tab(tab_pumps, g_json_pumps, "pumps");
+    load_devices_into_tab(tab_tanks, g_json_tanks, "tanks");
+    load_devices_into_tab(tab_sensors, g_json_sensors, "sensors");
 
     lv_screen_load(scr);
 
@@ -267,6 +291,13 @@ char *load_json_file(const char *path)
 
 static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data)
 {
+    if (dctx != NULL) {
+        ESP_LOGW(TAG, "Deleting dialog context");
+        free(dctx);
+        dctx = NULL;
+    }
+    dctx = malloc(sizeof(dialog_ctx_t));
+
     /* Create a modal background */
     lv_obj_t * modal = lv_obj_create(parent);
     lv_obj_set_size(modal, LV_PCT(100), LV_PCT(100));
@@ -323,6 +354,13 @@ static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data)
 
     lv_dropdown_set_selected(dd_state, data->state);
 
+    dctx->device = data;
+    dctx->modal = modal;
+    dctx->win = win;
+    dctx->edit = edit;
+    dctx->dd_state = dd_state;
+    dctx->kb = kb;
+
     /* Buttons container */
     lv_obj_t * btn_cont = lv_obj_create(win);
     lv_obj_set_size(btn_cont, LV_PCT(100), LV_SIZE_CONTENT);
@@ -335,7 +373,7 @@ static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data)
     /* OK button */
     lv_obj_t * btn_ok = lv_btn_create(btn_cont);
     lv_obj_set_width(btn_ok, LV_PCT(45));
-    lv_obj_add_event_cb(btn_ok, dialog_ok_event, LV_EVENT_CLICKED, data);
+    lv_obj_add_event_cb(btn_ok, dialog_ok_event, LV_EVENT_CLICKED, dctx);
     lv_label_set_text(lv_label_create(btn_ok), "OK");
 
     /* Cancel button */
@@ -345,31 +383,52 @@ static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data)
     lv_label_set_text(lv_label_create(btn_cancel), "Cancel");
 
     /* Store pointers inside the window for later */
-    lv_obj_set_user_data(win, edit);
+    lv_obj_set_user_data(win, dctx);
 }
 
 static void dialog_ok_event(lv_event_t * e)
 {
-    device_ctx_t * data = lv_event_get_user_data(e);
+    device_ctx_t * data = dctx->device;
 
-    lv_obj_t * btn = lv_event_get_target(e);
-    lv_obj_t * cont = lv_obj_get_parent(btn);
-    lv_obj_t * win = lv_obj_get_parent(cont);
-    lv_obj_t * edit = lv_obj_get_user_data(win);
-
-    const char *new_text = lv_textarea_get_text(edit);
+    const char *new_text = lv_textarea_get_text(dctx->edit);
     ESP_LOGI(TAG, "Debug :%s", new_text);
 
     data->location = realloc(data->location, strlen(new_text) + 1);
     strcpy(data->location, new_text);
 
-    lv_obj_del(lv_obj_get_parent(win));  // Delete the modal background, which also deletes the window
+    lv_obj_t *label_title = lv_obj_get_child(data->card, 0); // Assuming the title label is the first child
+    lv_label_set_text(label_title, data->location);
+
+
+    /* Read dropdown */
+    uint16_t sel = lv_dropdown_get_selected(dctx->dd_state);
+    char txt[64];
+    lv_dropdown_get_selected_str(dctx->dd_state, txt, sizeof(txt));
+    if(strcmp(txt, "Active") == 0) 
+        data->state = STATE_ACTIVE;
+    else if(strcmp(txt, "Inactive") == 0) 
+        data->state = STATE_INACTIVE;
+    else if(strcmp(txt, "Error") == 0)
+        data->state = STATE_ERROR;
+
+    printf("Selected index: %d\n", sel);
+    printf("Selected text: %s\n", txt);
+
+    rewrite_card_info(data);
+
+    lv_obj_del(lv_obj_get_parent(dctx->win));  // Delete the modal background, which also deletes the window
+
+    free(dctx);  // Free the dialog context
+    dctx = NULL;
 }
 
 static void dialog_cancel_event(lv_event_t * e)
 {
     lv_obj_t * modal = lv_event_get_user_data(e);
     lv_obj_del(modal);
+
+    free(dctx);  // Free the dialog context
+    dctx = NULL;
 }
 
 static void ta_event_cb(lv_event_t * e)
@@ -384,4 +443,31 @@ static void ta_event_cb(lv_event_t * e)
     else if(lv_event_get_code(e) == LV_EVENT_DEFOCUSED) {
         lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
     }
+
+}
+
+void rewrite_card_info(device_ctx_t *ctx)
+{
+    char info[512];
+
+    if (!ctx || !ctx->card) 
+        return;
+
+    switch(ctx->state) {
+        case STATE_ACTIVE:
+            snprintf(info, sizeof(info), "\nState: Active\n");
+            break;
+        case STATE_INACTIVE:
+            snprintf(info, sizeof(info), "\nState: Inactive\n");
+            break;
+        case STATE_ERROR:
+            snprintf(info, sizeof(info), "\nState: Error\n");
+            break;
+        default:
+            snprintf(info, sizeof(info), "\nState: Unknown\n");
+            break;
+    }
+
+    lv_obj_t *label_info = lv_obj_get_child(ctx->card, 1); // Assuming the info label is the second child
+    lv_label_set_text(label_info, info);
 }
