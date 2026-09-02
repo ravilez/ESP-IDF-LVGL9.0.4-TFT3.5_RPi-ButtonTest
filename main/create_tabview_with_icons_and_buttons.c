@@ -1,4 +1,5 @@
 #include "esp_log.h"
+#include "esp_lvgl_port.h"
 #include "esp_spiffs.h"
 
 #include "lvgl.h"
@@ -6,8 +7,7 @@
 #include <stdio.h>
 
 static const char* TAG = "Tabview";
-
-char *load_json_file(const char *path);
+static void ta_event_cb(lv_event_t * e);
 
 typedef enum {
     TYPE_PUMP,
@@ -21,8 +21,19 @@ typedef enum {
     STATE_ACTIVE,
     STATE_INACTIVE,
     STATE_ERROR,
-    STATE_DISABLED
 } device_state_t;
+
+typedef struct {
+    device_state_t state;
+    char *location;
+    device_type_t type;
+} device_ctx_t;
+
+char *load_json_file(const char *path);
+static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data);
+static void dialog_ok_event(lv_event_t * e);
+static void dialog_cancel_event(lv_event_t * e);
+
 
 /* Forward declaration */
 static void btn_state_event_cb(lv_event_t *e);
@@ -34,7 +45,6 @@ static const char *get_state_text(device_state_t state)
         case STATE_ACTIVE:  return "Active";
         case STATE_INACTIVE: return "Inactive";
         case STATE_ERROR:   return "Error";
-        case STATE_DISABLED:return "Disabled";
         default:            return "Unknown";
     }
 }
@@ -45,214 +55,31 @@ static lv_color_t get_state_color(device_state_t state)
         case STATE_ACTIVE:  return lv_color_hex(0x00AEEF);
         case STATE_INACTIVE: return lv_color_hex(0xFFA500);
         case STATE_ERROR:   return lv_color_hex(0xFF0000);
-        case STATE_DISABLED:return lv_color_hex(0xAAAAAA);
         default:            return lv_color_hex(0xFFFFFF);
     }
-}
-
-typedef struct {
-    device_state_t state;
-    const char *device_name;
-    device_type_t device_type;
-    lv_obj_t *label_state;
-    lv_obj_t * img_obj;
-} device_ctx_t;
-
-/*
-void create_image(lv_obj_t *cont, const void *src) {
-	// Create an image object
-	lv_obj_t * img = lv_img_create(cont);
-
-	// Set the source of the image (e.g., a binary file or a declared image)
-	LV_IMG_DECLARE(my_image); // Ensure 'my_image' is declared in your project
-	lv_img_set_src(img, src);
-
-	// Align the image to the center of the screen
-	lv_obj_align(img, LV_ALIGN_CENTER, 0, 0);
-}
-*/
-
-/* Create a device indicator with a button */
-static lv_obj_t *create_device(lv_obj_t *parent, const char *name, device_state_t state, device_type_t device_type)
-{
-    lv_obj_t *cont = lv_obj_create(parent);
-    lv_obj_set_size(cont, 240, 300);
-    lv_obj_set_style_radius(cont, 10, 0);
-    lv_obj_set_style_pad_all(cont, 10, 0);
-    lv_obj_set_style_bg_color(cont, lv_color_hex(0x2E2E2E), 0);
-
-    lv_obj_t *label_name = lv_label_create(cont);
-    lv_label_set_text(label_name, name);
-    lv_obj_align(label_name, LV_ALIGN_TOP_MID, 0, 0);
-
-    lv_obj_t * img_obj = lv_image_create(cont); // Create an image object
-    switch (state) {
-        case STATE_ACTIVE:
-            switch (device_type) {
-                case TYPE_PUMP:
-                    lv_image_set_src(img_obj, "A:spiffs/Pump_Open_25pc.png"); // Set the image source
-                break;
-                default:
-                    lv_image_set_src(img_obj, "A:spiffs/Valve_Open_25pc.png"); // Set the image source
-                break;
-            }
-        break;
-        case STATE_INACTIVE:
-            switch (device_type) {
-                case TYPE_PUMP:
-                    lv_image_set_src(img_obj, "A:spiffs/Pump_Closed_25pc.png"); // Set the image source
-                break;
-                default:
-                    lv_image_set_src(img_obj, "A:spiffs/Valve_Closed_25pc.png"); // Set the image source
-                break;
-            }
-        break;
-        case STATE_DISABLED:
-            switch (device_type) {
-                case TYPE_PUMP:
-                    lv_image_set_src(img_obj, "A:spiffs/Pump_Disabled_25pc.png"); // Set the image source
-                break;
-                default:
-                    lv_image_set_src(img_obj, "A:spiffs/Valve_Disabled_25pc.png"); // Set the image source
-                break;
-            }
-        break;
-        case STATE_ERROR:
-        break;
-    }
-
-    lv_obj_t *label_state = lv_label_create(cont);
-    lv_label_set_text(label_state, get_state_text(state));
-    lv_obj_set_style_text_color(label_state, get_state_color(state), 0);
-    lv_obj_align(label_state, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-    /* Allocate context */
-    device_ctx_t *ctx = malloc(sizeof(device_ctx_t));
-    ctx->state = state;
-    ctx->device_name = name;
-    ctx->label_state = label_state;
-    ctx->img_obj = img_obj;
-
-    /* Create button */
-    lv_obj_t *btn = lv_btn_create(cont);
-    lv_obj_set_size(btn, 110, 40);
-    lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-    lv_obj_t *btn_label = lv_label_create(btn);
-    lv_label_set_text(btn_label, get_state_text(state));
-    lv_obj_center(btn_label);
-
-    lv_obj_add_event_cb(btn, btn_state_event_cb, LV_EVENT_CLICKED, ctx);
-
-    return cont;
 }
 
 /* Callback to cycle through states */
 static void btn_state_event_cb(lv_event_t *e)
 {
     device_ctx_t *ctx = lv_event_get_user_data(e);
+    lv_obj_t *btn = lv_event_get_target(e);
+
+    open_edit_dialog(lv_layer_top(), ctx);
 
     /* Cycle state */
-    ctx->state = (ctx->state + 1) % 4;
+    /*ctx->state = (ctx->state + 1) % 4;*/
 
     /* Update button label */
-    lv_obj_t *btn = lv_event_get_target(e);
-    lv_obj_t *btn_label = lv_obj_get_child(btn, 0);
-    lv_label_set_text(btn_label, get_state_text(ctx->state));
+    /*lv_obj_t *btn_label = lv_obj_get_child(btn, 0);
+    lv_label_set_text(btn_label, get_state_text(ctx->state));*/
 
-    /* Update state label */
-    lv_label_set_text(ctx->label_state, get_state_text(ctx->state));
-    lv_obj_set_style_text_color(ctx->label_state, get_state_color(ctx->state), 0);
-
-    /* Update image */
-    switch (ctx->state) {
-        case STATE_ACTIVE:
-            switch (ctx->device_type) {
-                case TYPE_PUMP:
-                    lv_image_set_src(ctx->img_obj, "A:spiffs/Pump_Open_25pc.png"); // Set the image source
-                break;
-                default:
-                    lv_image_set_src(ctx->img_obj, "A:spiffs/Valve_Open_25pc.png"); // Set the image source
-                break;
-            }
-        break;
-        case STATE_INACTIVE:
-            switch (ctx->device_type) {
-                case TYPE_PUMP:
-                    lv_image_set_src(ctx->img_obj, "A:spiffs/Pump_Closed_25pc.png"); // Set the image source
-                break;
-                default:
-                    lv_image_set_src(ctx->img_obj, "A:spiffs/Valve_Closed_25pc.png"); // Set the image source
-                break;
-            }
-        break;
-        case STATE_DISABLED:
-            switch (ctx->device_type) {
-                case TYPE_PUMP:
-                    lv_image_set_src(ctx->img_obj, "A:spiffs/Pump_Disabled_25pc.png"); // Set the image source
-                break;
-                default:
-                    lv_image_set_src(ctx->img_obj, "A:spiffs/Valve_Disabled_25pc.png"); // Set the image source
-                break;
-            }
-        break;
-        case STATE_ERROR:
-        break;
-    }
-
-
-    /* Notify ESP32 */
-    /*send_state_to_esp32(ctx->device_name, ctx->state);*/
 }
 
-/* Main screen with Tabview */
-void ui_screen_devices(void)
+static lv_obj_t *create_device_card(lv_obj_t *parent, const char *title, const char *info, device_ctx_t *ctx)
 {
-    lv_obj_t *scr = lv_obj_create(NULL);
-    lv_obj_t *tabview = lv_tabview_create(scr);
-    lv_obj_set_size(tabview, LV_PCT(100), LV_PCT(100));
+    if (!lvgl_port_lock(0)) return NULL;
 
-    lv_obj_t *tab_pumps   = lv_tabview_add_tab(tabview, "Pumps");
-    lv_obj_t *tab_valves  = lv_tabview_add_tab(tabview, "Valves");
-    lv_obj_t *tab_sensors = lv_tabview_add_tab(tabview, "Sensors");
-    lv_obj_t *tab_flow    = lv_tabview_add_tab(tabview, "Meters");
-    lv_obj_t *tab_tanks   = lv_tabview_add_tab(tabview, "Tanks");
-
-    /* Pumps */
-    lv_obj_t *pump1 = create_device(tab_pumps, "Pump 1", STATE_ACTIVE, TYPE_PUMP);
-    lv_obj_align(pump1, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *pump2 = create_device(tab_pumps, "Pump 2", STATE_INACTIVE, TYPE_PUMP);
-    lv_obj_align(pump2, LV_ALIGN_TOP_MID, 0, 340);
-
-    /* Valves */
-    lv_obj_t *valve1 = create_device(tab_valves, "Valve 1", STATE_ACTIVE, TYPE_VALVE);
-    lv_obj_align(valve1, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *valve2 = create_device(tab_valves, "Valve 2", STATE_ACTIVE, TYPE_VALVE);
-    lv_obj_align(valve2, LV_ALIGN_TOP_MID, 0, 340);
-
-    /* Sensors */
-    lv_obj_t *sensor1 = create_device(tab_sensors, "Sensor 1", STATE_ACTIVE, TYPE_SENSOR);
-    lv_obj_align(sensor1, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *sensor2 = create_device(tab_sensors, "Sensor 2", STATE_DISABLED, TYPE_SENSOR);
-    lv_obj_align(sensor2, LV_ALIGN_TOP_MID, 0, 340);
-
-    /* Flow Meters */
-    lv_obj_t *flow1 = create_device(tab_flow, "Flow Meter 1", STATE_INACTIVE, TYPE_METER);
-    lv_obj_align(flow1, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *flow2 = create_device(tab_flow, "Flow Meter 2", STATE_ERROR, TYPE_METER);
-    lv_obj_align(flow2, LV_ALIGN_TOP_MID, 0, 340);
-
-    /* Tanks */
-    lv_obj_t *tank1 = create_device(tab_tanks, "Tank 1", STATE_ACTIVE, TYPE_TANK);
-    lv_obj_align(tank1, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *tank2 = create_device(tab_tanks, "Tank 2", STATE_INACTIVE, TYPE_TANK);
-    lv_obj_align(tank2, LV_ALIGN_TOP_MID, 0, 340);
-
-    lv_screen_load(scr);
-}
-
-static lv_obj_t *create_device_card(lv_obj_t *parent, const char *title, const char *info)
-{
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_width(card, lv_pct(100));
     lv_obj_set_height(card, 250);
@@ -280,8 +107,12 @@ static lv_obj_t *create_device_card(lv_obj_t *parent, const char *title, const c
     lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, 0);
 
     lv_obj_t *btn_label = lv_label_create(btn);
-    lv_label_set_text(btn_label, "Press me!");
+    lv_label_set_text(btn_label, "Edit");
     lv_obj_center(btn_label);
+
+    lv_obj_add_event_cb(btn, btn_state_event_cb, LV_EVENT_CLICKED, ctx);
+
+    lvgl_port_unlock();
 
     return card;
 }
@@ -297,14 +128,15 @@ static void load_devices_into_tab(lv_obj_t *tab, cJSON *array, const char *type)
     int count = cJSON_GetArraySize(array);
 
     for (int i = 0; i < count; i++) {
+
         cJSON *dev = cJSON_GetArrayItem(array, i);
 
-        const char *location = cJSON_GetObjectItem(dev, "location")->valuestring;
-        const char *state = cJSON_GetObjectItem(dev, "state") ?
-                            cJSON_GetObjectItem(dev, "state")->valuestring : "n/a";
+        char *s_location = cJSON_GetObjectItem(dev, "location")->valuestring;
+        const char *s_state = cJSON_GetObjectItem(dev, "state") ?
+                            cJSON_GetObjectItem(dev, "state")->valuestring : "Error";
 
         char info[512];
-        snprintf(info, sizeof(info), "\nState: %s\n", state);
+        snprintf(info, sizeof(info), "\nState: %s\n", s_state);
 
         // Extra fields depending on type
         if (strcmp(type, "valves") == 0) {
@@ -339,8 +171,22 @@ static void load_devices_into_tab(lv_obj_t *tab, cJSON *array, const char *type)
                      "  %s-%s\n", start, end);
         }
 
-        //lv_obj_t *dev = create_device(tab_valves, "Valve 1", STATE_ACTIVE, TYPE_VALVE);
-        create_device_card(cont, location, info);
+        /* Allocate context */
+        device_ctx_t *ctx = malloc(sizeof(device_ctx_t));
+        if (s_state == NULL) {
+            ctx->state = STATE_ERROR;
+        } else if (strcmp(s_state, "on") == 0) {
+            ctx->state = STATE_ACTIVE;
+        } else if (strcmp(s_state, "off") == 0) {
+            ctx->state = STATE_INACTIVE;
+        } else {
+            ctx->state = STATE_ERROR;
+        }
+
+        ctx->location = malloc(strlen(s_location) + 1);
+        strcpy(ctx->location, s_location);
+
+        create_device_card(cont, s_location, info, ctx);
     }
 }
 
@@ -416,4 +262,126 @@ char *load_json_file(const char *path)
 
     fclose(f);
     return buffer;
+}
+
+
+static void open_edit_dialog(lv_obj_t * parent, device_ctx_t * data)
+{
+    /* Create a modal background */
+    lv_obj_t * modal = lv_obj_create(parent);
+    lv_obj_set_size(modal, LV_PCT(100), LV_PCT(100));
+    lv_obj_add_flag(modal, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_opa(modal, LV_OPA_50, 0);
+
+    /* Create the dialog window */
+    lv_obj_t * win = lv_win_create(modal);
+    lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(win,
+                        LV_FLEX_ALIGN_START,   /* children start at top */
+                        LV_FLEX_ALIGN_START,
+                        LV_FLEX_ALIGN_CENTER);
+    lv_win_add_title(win, "Edit data");
+
+    /* FIX: give the dialog a real size */
+    lv_obj_set_size(win, LV_PCT(100), LV_PCT(70));
+    lv_obj_center(win);
+
+    /* Container for fields */
+    lv_obj_t * cont = lv_obj_create(win);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont,
+                        LV_FLEX_ALIGN_START,   /* children start at top */
+                        LV_FLEX_ALIGN_START,
+                        LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+
+    /* Location field */
+    lv_obj_t * edit = lv_textarea_create(cont);
+    lv_textarea_set_one_line(edit, true);
+    lv_textarea_set_placeholder_text(edit, "Enter value");
+    lv_textarea_set_text(edit, data->location);   // or any string
+    lv_obj_set_width(edit, LV_PCT(100));
+
+    /* Virtual keyboard */
+    lv_obj_t * kb = lv_keyboard_create(lv_layer_top());
+    lv_obj_set_size(kb, LV_PCT(100), LV_PCT(40));
+    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+    /* Link keyboard to textarea */
+    lv_keyboard_set_textarea(kb, edit);
+
+    lv_obj_add_event_cb(edit, ta_event_cb, LV_EVENT_ALL, kb);
+    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+
+    
+    /* State dropdown */
+    lv_obj_t * dd_state = lv_dropdown_create(cont);
+    lv_dropdown_set_options(dd_state,
+        "Active\n"
+        "Inactive\n"
+        "Error");
+
+    lv_dropdown_set_selected(dd_state, data->state);
+
+    /* Buttons container */
+    lv_obj_t * btn_cont = lv_obj_create(win);
+    lv_obj_set_size(btn_cont, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(btn_cont, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btn_cont,
+                        LV_FLEX_ALIGN_SPACE_EVENLY,   /* space buttons evenly */
+                        LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+    /* OK button */
+    lv_obj_t * btn_ok = lv_btn_create(btn_cont);
+    lv_obj_set_width(btn_ok, LV_PCT(45));
+    lv_obj_add_event_cb(btn_ok, dialog_ok_event, LV_EVENT_CLICKED, data);
+    lv_label_set_text(lv_label_create(btn_ok), "OK");
+
+    /* Cancel button */
+    lv_obj_t * btn_cancel = lv_btn_create(btn_cont);
+    lv_obj_set_width(btn_cancel, LV_PCT(45));
+    lv_obj_add_event_cb(btn_cancel, dialog_cancel_event, LV_EVENT_CLICKED, modal);
+    lv_label_set_text(lv_label_create(btn_cancel), "Cancel");
+
+    /* Store pointers inside the window for later */
+    lv_obj_set_user_data(win, edit);
+}
+
+static void dialog_ok_event(lv_event_t * e)
+{
+    device_ctx_t * data = lv_event_get_user_data(e);
+
+    lv_obj_t * btn = lv_event_get_target(e);
+    lv_obj_t * cont = lv_obj_get_parent(btn);
+    lv_obj_t * win = lv_obj_get_parent(cont);
+    lv_obj_t * edit = lv_obj_get_user_data(win);
+
+    const char *new_text = lv_textarea_get_text(edit);
+    ESP_LOGI(TAG, "Debug :%s", new_text);
+
+    data->location = realloc(data->location, strlen(new_text) + 1);
+    strcpy(data->location, new_text);
+
+    lv_obj_del(lv_obj_get_parent(win));  // Delete the modal background, which also deletes the window
+}
+
+static void dialog_cancel_event(lv_event_t * e)
+{
+    lv_obj_t * modal = lv_event_get_user_data(e);
+    lv_obj_del(modal);
+}
+
+static void ta_event_cb(lv_event_t * e)
+{
+    lv_obj_t * ta = lv_event_get_target(e);
+    lv_obj_t * kb = lv_event_get_user_data(e);
+
+    if(lv_event_get_code(e) == LV_EVENT_FOCUSED) {
+        lv_obj_clear_flag(kb, LV_OBJ_FLAG_HIDDEN);
+        lv_keyboard_set_textarea(kb, ta);
+    }
+    else if(lv_event_get_code(e) == LV_EVENT_DEFOCUSED) {
+        lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+    }
 }

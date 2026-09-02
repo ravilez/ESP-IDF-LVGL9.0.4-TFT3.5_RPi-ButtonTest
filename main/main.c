@@ -119,10 +119,9 @@ void app_main(void)
     }
 
     //demo_test_styled_buttons();
-    //ui_create_settings_menu(disp);
     read_irrigation_config();
 
-    //msgbox_create();
+    msgbox_create();
 
     while (1) {
         
